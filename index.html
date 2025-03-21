@@ -1,296 +1,307 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smile and Speech Analyzer</title>
-  <script src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 20px;
-    }
-    #video, #canvas {
-      display: inline-block;
-      max-width: 100%;
-    }
-    #canvas {
-      display: none;
-    }
-    button {
-      padding: 10px 20px;
-      margin: 5px;
-      font-size: 16px;
-    }
-    #status, #results, #subtitles {
-      margin-top: 20px;
-      font-size: 18px;
-    }
-    #loading-pie {
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      background: conic-gradient(#4caf50 0% 0%, #ddd 0% 100%);
-      display: inline-block;
-      margin: 10px auto;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>AI Interview Bot with Video & Voice</title>
+    <style>
+        .container {
+            width: 800px;
+            margin: 20px auto;
+            display: flex;
+            gap: 20px;
+        }
+        .chat-container {
+            width: 400px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+        }
+        .video-container {
+            width: 350px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .bot-message {
+            background-color: #f0f0f0;
+        }
+        .user-message {
+            background-color: #e0f0ff;
+            margin-left: 20%;
+        }
+        .input-container {
+            width: 400px;
+            margin: 10px auto;
+            display: flex;
+            gap: 10px;
+        }
+        #progressBar {
+            width: 400px;
+            height: 20px;
+            margin: 10px auto;
+        }
+        #scoreDisplay {
+            width: 400px;
+            margin: 10px auto;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-  <h1>Smile and Speech Analyzer</h1>
-  <div id="loading-pie"></div>
-  <p id="loading-text">Loading...</p>
-  <video id="video" width="640" height="480" autoplay playsinline muted></video>
-  <canvas id="canvas" width="640" height="480"></canvas>
-  <div id="subtitles">Subtitles: Waiting for speech...</div>
-  <br>
-  <button id="startBtn" disabled>Start Analysis</button>
-  <button id="stopBtn" disabled>Stop Analysis</button>
-  <div id="status">Status: Waiting to start...</div>
-  <div id="results"></div>
+    <div class="container">
+        <div class="chat-container" id="chatContainer"></div>
+        <div class="video-container">
+            <video id="video" width="350" height="262" autoplay></video>
+            <canvas id="canvas" width="350" height="262" style="display:none"></canvas>
+        </div>
+    </div>
+    <div id="progressBar"><progress id="progress" value="0" max="100"></progress></div>
+    <div id="scoreDisplay">Score: 0/100</div>
+    <div class="input-container">
+        <button id="startInterview">Start Interview</button>
+        <button id="doneButton" disabled>Okay, I'm done</button>
+    </div>
 
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const context = canvas.getContext('2d');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const statusDiv = document.getElementById('status');
-    const resultsDiv = document.getElementById('results');
-    const subtitlesDiv = document.getElementById('subtitles');
-    const loadingPie = document.getElementById('loading-pie');
-    const loadingText = document.getElementById('loading-text');
+    <script>
+        // Interview setup
+        const interviewQuestions = [
+            "Tell me about yourself.",
+            "What are your strengths?",
+            "What are your weaknesses?",
+            "Why do you want this job?",
+            "Where do you see yourself in 5 years?"
+        ];
 
-    let smilingSeconds = 0;
-    let notSmilingSeconds = 0;
-    let intervalId = null;
-    let recognition = null;
-    let fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let feedbackDetails = [];
+        let responseStartTime;
+        let fullTranscript = "";
+        const maxResponseTime = 60000; // 1 minute
 
-    let loadingProgress = 0;
-    function updateLoadingProgress(percent) {
-      loadingProgress = percent;
-      loadingPie.style.background = `conic-gradient(#4caf50 0% ${percent}%, #ddd ${percent}% 100%)`;
-      if (percent >= 100) {
-        loadingText.textContent = 'Ready!';
-        startBtn.disabled = false;
-      }
-    }
+        // Video setup
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
 
-    if (typeof faceapi === 'undefined') {
-      console.error('Face-API.js not loaded');
-      statusDiv.textContent = 'Error: Face-API.js failed to load';
-      updateLoadingProgress(0);
-    } else {
-      console.log('Face-API.js loaded successfully');
-      updateLoadingProgress(20);
-    }
+        // Speech setup
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
 
-    async function loadModels() {
-      if (typeof faceapi === 'undefined') {
-        throw new Error('Face-API.js not available');
-      }
-      try {
-        statusDiv.textContent = 'Loading Face-API models...';
-        console.log('Loading Face-API models...');
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
-          faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
-        ]);
-        console.log('Face-API models loaded successfully');
-        updateLoadingProgress(100);
-        statusDiv.textContent = 'Models loaded';
-      } catch (err) {
-        console.error('Model loading failed:', err.message);
-        statusDiv.textContent = 'Error: Failed to load models';
-        throw err;
-      }
-    }
+        // Common filler words
+        const fillerWords = ["um", "uh", "like", "you know", "basically", "er", "ah", "so", "well", "actually"];
 
-    async function startVideo() {
-      try {
-        console.log('Requesting camera and microphone access...');
-        statusDiv.textContent = 'Status: Requesting camera/mic...';
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true, 
-          audio: { echoCancellation: true, noiseSuppression: true }
+        // Button references
+        const startButton = document.getElementById("startInterview");
+        const doneButton = document.getElementById("doneButton");
+
+        // Initialize
+        function startInterview() {
+            addMessage("Welcome! Please allow camera and microphone access.", "bot");
+            setupVideo();
+            setupSpeech();
+            recognition.start(); // Start microphone once
+            updateProgress();
+            askQuestion();
+            startButton.disabled = true;
+            doneButton.disabled = false;
+        }
+
+        // Video/Posture/Facial Expression Detection
+        async function setupVideo() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                analyzeVideo();
+            } catch (err) {
+                addMessage("Error accessing camera: " + err.message, "bot");
+            }
+        }
+
+        function analyzeVideo() {
+            setInterval(() => {
+                ctx.drawImage(video, 0, 0, 350, 262);
+                const imageData = ctx.getImageData(0, 0, 350, 262);
+                const data = imageData.data;
+
+                // Basic posture check
+                const brightness = data.reduce((sum, val) => sum + val) / (350 * 262 * 4);
+                if (brightness < 50) {
+                    feedbackDetails.push("Posture: Could you sit up straighter?");
+                    score -= 2;
+                }
+
+                // Simple facial expression detection (mouth curve for smile)
+                let smileScore = 0;
+                for (let y = 200; y < 250; y += 2) { // Mouth region
+                    for (let x = 100; x < 250; x += 2) {
+                        const i = (y * 350 + x) * 4;
+                        const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                        if (brightness > 150) smileScore++; // Light areas might indicate teeth/smile
+                    }
+                }
+                if (smileScore > 1000) feedbackDetails.push("Expression: Nice smile!");
+                else if (smileScore < 500) feedbackDetails.push("Expression: Try smiling more.");
+
+                updateScore();
+            }, 5000);
+        }
+
+        // Speech Analysis
+        function setupSpeech() {
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                fullTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        fullTranscript += transcript + " ";
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                const displayText = fullTranscript + interimTranscript;
+                const container = document.getElementById("chatContainer");
+                const existingUserMessage = container.querySelector(".user-message:last-child");
+                if (existingUserMessage && !fullTranscript) {
+                    existingUserMessage.textContent = displayText;
+                } else {
+                    addMessage(displayText, "user");
+                }
+            };
+
+            recognition.onerror = (event) => {
+                addMessage("Speech recognition error: " + event.error, "bot");
+            };
+        }
+
+        function countFillers(text) {
+            const words = text.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+            const fillerCounts = {};
+            fillerWords.forEach(filler => {
+                const regex = new RegExp(`\\b${filler}\\b`, "gi");
+                const count = (text.match(regex) || []).length;
+                if (count > 0) fillerCounts[filler] = count;
+            });
+            return fillerCounts;
+        }
+
+        // Chat functions
+        function addMessage(text, type) {
+            const container = document.getElementById("chatContainer");
+            const messageDiv = document.createElement("div");
+            messageDiv.classList.add("message", type === "bot" ? "bot-message" : "user-message");
+            messageDiv.textContent = text;
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function askQuestion() {
+            if (currentQuestionIndex < interviewQuestions.length) {
+                addMessage(interviewQuestions[currentQuestionIndex], "bot");
+                responseStartTime = Date.now();
+                updateProgress();
+            } else {
+                endInterview();
+            }
+        }
+
+        // Evaluation
+        function evaluateResponse(text, responseTime) {
+            let questionScore = 100;
+            let feedback = [];
+            const fillerCounts = countFillers(text);
+            const totalFillers = Object.values(fillerCounts).reduce((sum, count) => sum + count, 0);
+            const wordCount = text.split(/\s+/).length;
+            const uniqueWords = new Set(text.toLowerCase().split(/\s+/)).size;
+
+            if (totalFillers > 1) {
+                const fillerPenalty = Math.min(50, (totalFillers - 1) * 10);
+                questionScore -= fillerPenalty;
+                const fillerDetails = Object.entries(fillerCounts)
+                    .map(([word, count]) => `${word} (${count})`)
+                    .join(", ");
+                feedback.push(`Filler words detected: ${fillerDetails}`);
+            }
+
+            const lengthScore = Math.min(20, Math.max(0, (50 - text.length) / 2));
+            questionScore -= lengthScore;
+            if (lengthScore > 0) feedback.push(`Response too short (${text.length} chars)`);
+
+            const timePenalty = responseTime < 10000 ? 10 * (10 - responseTime / 1000) :
+                              responseTime > 45000 ? 10 * (responseTime / 1000 - 45) : 0;
+            questionScore -= Math.min(20, timePenalty);
+            if (timePenalty > 0) {
+                feedback.push(responseTime < 10000 ? "Too rushed" : "Too long");
+            }
+
+            const vocabScore = Math.min(20, Math.max(0, (wordCount * 0.5 - uniqueWords) * 2));
+            questionScore -= vocabScore;
+            if (vocabScore > 0) feedback.push("Limited vocabulary variety");
+
+            const question = interviewQuestions[currentQuestionIndex];
+            const keywords = {
+                "Tell me about yourself.": ["experience", "background", "skills"],
+                "What are your strengths?": ["strong", "good at", "skill"],
+                "What are your weaknesses?": ["weak", "improve", "challenge"],
+                "Why do you want this job?": ["interested", "role", "company"],
+                "Where do you see yourself in 5 years?": ["future", "goal", "plan"]
+            }[question] || ["answer", "response"];
+            
+            const relevanceScore = keywords.reduce((count, word) => 
+                count + (text.toLowerCase().includes(word) ? 0 : 5), 0);
+            questionScore -= Math.min(20, relevanceScore);
+            if (relevanceScore > 0) feedback.push("Missing key content");
+
+            questionScore = Math.max(0, questionScore);
+            score += questionScore;
+            feedbackDetails.push(`Q${currentQuestionIndex + 1} (${questionScore}/100): ${feedback.join(", ") || "Excellent response"}`);
+            addMessage(`Feedback: ${feedback.join(", ") || "Excellent response"}`, "bot");
+            
+            currentQuestionIndex++;
+            setTimeout(askQuestion, 1000);
+            updateScore();
+        }
+
+        // UI Updates
+        function updateProgress() {
+            const progress = document.getElementById("progress");
+            progress.value = (currentQuestionIndex / interviewQuestions.length) * 100;
+        }
+
+        function updateScore() {
+            document.getElementById("scoreDisplay").textContent = 
+                `Score: ${score}/${interviewQuestions.length * 100}`;
+        }
+
+        function endInterview() {
+            recognition.stop();
+            addMessage("Interview complete! Here's your detailed feedback:", "bot");
+            feedbackDetails.forEach(f => addMessage(f, "bot"));
+            addMessage(`Final Score: ${score}/${interviewQuestions.length * 100}`, "bot");
+            doneButton.disabled = true;
+        }
+
+        // Event Listeners
+        startButton.addEventListener("click", startInterview);
+
+        doneButton.addEventListener("click", () => {
+            const responseTime = Date.now() - responseStartTime;
+            evaluateResponse(fullTranscript.trim(), responseTime);
+            fullTranscript = "";
         });
-        video.srcObject = stream;
-        video.muted = true; // Ensure muted to prevent echo
-        console.log('Video and audio stream started');
-        statusDiv.textContent = 'Status: Stream started';
-      } catch (err) {
-        console.error('Stream error:', err.message);
-        statusDiv.textContent = `Error: ${err.message}`;
-        throw err;
-      }
-    }
 
-    async function analyzeExpression() {
-      try {
-        const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-          .withFaceExpressions();
-        if (detections) {
-          const smileScore = detections.expressions.happy;
-          if (smileScore > 0.5) {
-            smilingSeconds += 1;
-            statusDiv.textContent = 'Status: Smiling (Good)';
-          } else {
-            notSmilingSeconds += 1;
-            statusDiv.textContent = 'Status: Not Smiling (Not Good)';
-          }
-        } else {
-          statusDiv.textContent = 'Status: No face detected';
-        }
-      } catch (err) {
-        console.error('Analysis error:', err.message);
-        statusDiv.textContent = 'Status: Analysis error - Check console';
-      }
-    }
-
-    function startSpeechRecognition() {
-      if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
-        console.warn('Speech recognition not supported in this browser');
-        statusDiv.textContent = 'Warning: Speech recognition not supported';
-        subtitlesDiv.textContent = 'Subtitles: Speech recognition unavailable';
-        return;
-      }
-      recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-      recognition.maxAlternatives = 1;
-
-      recognition.onstart = () => {
-        console.log('Speech recognition started at', new Date().toLocaleTimeString());
-        subtitlesDiv.textContent = 'Subtitles: Listening...';
-      };
-      recognition.onaudiostart = () => {
-        console.log('Audio capture started');
-      };
-      recognition.onsoundstart = () => {
-        console.log('Sound detected');
-      };
-      recognition.onspeechstart = () => {
-        console.log('Speech detected');
-      };
-      recognition.onresult = (event) => {
-        const result = event.results[event.results.length - 1];
-        const transcript = result[0].transcript.toLowerCase();
-        console.log('Speech result:', transcript, 'Confidence:', result[0].confidence);
-        subtitlesDiv.textContent = `Subtitles: ${transcript}`;
-        subtitlesDiv.scrollTop = subtitlesDiv.scrollHeight; // Force UI refresh
-        if (transcript.includes('um')) fillerWords.um += 1;
-        if (transcript.includes('argh')) fillerWords.argh += 1;
-        if (transcript.includes('uh')) fillerWords.uh += 1;
-        if (transcript.includes('like')) fillerWords.like += 1;
-        if (transcript.includes('you know')) fillerWords['you know'] += 1;
-      };
-      recognition.onend = () => {
-        console.log('Speech recognition ended at', new Date().toLocaleTimeString());
-        if (intervalId) {
-          console.log('Restarting speech recognition...');
-          try {
-            recognition.start();
-          } catch (err) {
-            console.error('Restart error:', err.message);
-            subtitlesDiv.textContent = `Subtitles: Restart failed - ${err.message}`;
-          }
-        }
-      };
-      recognition.onerror = (err) => {
-        console.error('Speech recognition error:', err.error, err.message);
-        subtitlesDiv.textContent = `Subtitles: Error - ${err.error}`;
-      };
-
-      try {
-        recognition.start();
-      } catch (err) {
-        console.error('Failed to start recognition:', err.message);
-        subtitlesDiv.textContent = `Subtitles: Failed to start - ${err.message}`;
-      }
-    }
-
-    function resetAnalysis() {
-      smilingSeconds = 0;
-      notSmilingSeconds = 0;
-      fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
-      resultsDiv.innerHTML = '';
-      subtitlesDiv.textContent = 'Subtitles: Waiting for speech...';
-    }
-
-    function stopAnalysis() {
-      try {
-        if (intervalId) {
-          clearInterval(intervalId);
-          intervalId = null;
-          console.log('Interval cleared');
-        }
-        if (recognition) {
-          recognition.stop();
-          recognition = null;
-          console.log('Speech recognition stopped');
-        }
-        if (video.srcObject) {
-          video.srcObject.getTracks().forEach(track => track.stop());
-          video.srcObject = null;
-          console.log('Video stream stopped');
-        }
-
-        const totalSeconds = smilingSeconds + notSmilingSeconds;
-        const smilePercentage = totalSeconds > 0 ? (smilingSeconds / totalSeconds) * 100 : 0;
-        const category = smilePercentage > 50 ? 'Good (Mostly Smiling)' : 'Not Good (Mostly Not Smiling)';
-
-        resultsDiv.innerHTML = `
-          <h2>Results</h2>
-          <p>Total Time: ${totalSeconds} seconds</p>
-          <p>Smiling: ${smilingSeconds} seconds (${smilePercentage.toFixed(2)}%)</p>
-          <p>Not Smiling: ${notSmilingSeconds} seconds (${(100 - smilePercentage).toFixed(2)}%)</p>
-          <p>Category: ${category}</p>
-          <p>Filler Words - Um: ${fillerWords.um}, Argh: ${fillerWords.argh}, Uh: ${fillerWords.uh}, Like: ${fillerWords.like}, You Know: ${fillerWords['you know']}</p>
-        `;
-
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        statusDiv.textContent = 'Status: Ready to start new analysis';
-        subtitlesDiv.textContent = 'Subtitles: Waiting for speech...';
-        console.log('Analysis stopped, ready for new start');
-      } catch (err) {
-        console.error('Stop error:', err.message);
-        statusDiv.textContent = 'Error: Failed to stop analysis';
-      }
-    }
-
-    startBtn.onclick = async () => {
-      console.log('Start button clicked');
-      try {
-        if (typeof faceapi === 'undefined') {
-          throw new Error('Face-API.js not loaded');
-        }
-        resetAnalysis();
-        await startVideo();
-        startSpeechRecognition();
-
-        intervalId = setInterval(analyzeExpression, 1000);
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        statusDiv.textContent = 'Status: Analyzing...';
-        console.log('Analysis started');
-      } catch (err) {
-        console.error('Start error:', err.message);
-        statusDiv.textContent = `Error: ${err.message}`;
-      }
-    };
-
-    stopBtn.onclick = stopAnalysis;
-
-    console.log('Page loaded at', new Date().toLocaleString());
-    loadModels().catch(err => {
-      console.error('Initial load error:', err);
-      statusDiv.textContent = 'Error: Initial setup failed';
-      updateLoadingProgress(0);
-    });
-  </script>
+        // Start
+        window.onload = () => {
+            startButton.disabled = false;
+        };
+    </script>
 </body>
 </html>
