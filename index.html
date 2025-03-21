@@ -29,14 +29,24 @@
       margin-top: 20px;
       font-size: 18px;
     }
+    #loading-pie {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: conic-gradient(#4caf50 0% 0%, #ddd 0% 100%);
+      display: inline-block;
+      margin: 10px auto;
+    }
   </style>
 </head>
 <body>
   <h1>Smile and Speech Analyzer</h1>
+  <div id="loading-pie"></div>
+  <p id="loading-text">Loading...</p>
   <video id="video" width="640" height="480" autoplay muted></video>
   <canvas id="canvas" width="640" height="480"></canvas>
   <br>
-  <button id="startBtn">Start Analysis</button>
+  <button id="startBtn" disabled>Start Analysis</button>
   <button id="stopBtn" disabled>Stop Analysis</button>
   <div id="status">Status: Waiting to start...</div>
   <div id="results"></div>
@@ -49,6 +59,8 @@
     const stopBtn = document.getElementById('stopBtn');
     const statusDiv = document.getElementById('status');
     const resultsDiv = document.getElementById('results');
+    const loadingPie = document.getElementById('loading-pie');
+    const loadingText = document.getElementById('loading-text');
 
     let smilingSeconds = 0;
     let notSmilingSeconds = 0;
@@ -59,11 +71,24 @@
     let fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
     let net; // PoseNet model
 
+    // Loading progress
+    let loadingProgress = 0;
+    function updateLoadingProgress(percent) {
+      loadingProgress = percent;
+      loadingPie.style.background = `conic-gradient(#4caf50 0% ${percent}%, #ddd ${percent}% 100%)`;
+      if (percent >= 100) {
+        loadingText.textContent = 'Ready!';
+        startBtn.disabled = false;
+      }
+    }
+
     if (typeof faceapi === 'undefined') {
       console.error('Face-API.js not loaded');
       statusDiv.textContent = 'Error: Face-API.js failed to load';
+      updateLoadingProgress(0);
     } else {
       console.log('Face-API.js loaded successfully');
+      updateLoadingProgress(20); // Initial script load
     }
 
     async function loadModels() {
@@ -79,9 +104,12 @@
           faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
         ]);
         console.log('Face-API models loaded successfully');
+        updateLoadingProgress(60); // Face-API loaded
+
         statusDiv.textContent = 'Loading PoseNet...';
         net = await posenet.load();
         console.log('PoseNet loaded successfully');
+        updateLoadingProgress(100); // All models loaded
         statusDiv.textContent = 'Models loaded';
       } catch (err) {
         console.error('Model loading failed:', err.message);
@@ -180,6 +208,15 @@
       console.log('Speech recognition started');
     }
 
+    function resetAnalysis() {
+      smilingSeconds = 0;
+      notSmilingSeconds = 0;
+      yawningSeconds = 0;
+      slouchingSeconds = 0;
+      fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
+      resultsDiv.innerHTML = '';
+    }
+
     function stopAnalysis() {
       try {
         if (intervalId) {
@@ -215,8 +252,8 @@
 
         startBtn.disabled = false;
         stopBtn.disabled = true;
-        statusDiv.textContent = 'Status: Analysis stopped';
-        console.log('Analysis fully stopped');
+        statusDiv.textContent = 'Status: Ready to start new analysis';
+        console.log('Analysis stopped, ready for new start');
       } catch (err) {
         console.error('Stop error:', err.message);
         statusDiv.textContent = 'Error: Failed to stop analysis';
@@ -229,13 +266,13 @@
         if (typeof faceapi === 'undefined') {
           throw new Error('Face-API.js not loaded');
         }
-        await loadModels();
+        resetAnalysis(); // Clear previous results
         await startVideo();
         startSpeechRecognition();
 
         intervalId = setInterval(analyzeExpression, 1000);
         startBtn.disabled = true;
-        stopBtn.disabled = false; // Ensure stop button is enabled
+        stopBtn.disabled = false;
         statusDiv.textContent = 'Status: Analyzing...';
         console.log('Analysis started');
       } catch (err) {
@@ -246,7 +283,13 @@
 
     stopBtn.onclick = stopAnalysis;
 
+    // Load models on page load
     console.log('Page loaded at', new Date().toLocaleString());
+    loadModels().catch(err => {
+      console.error('Initial load error:', err);
+      statusDiv.textContent = 'Error: Initial setup failed';
+      updateLoadingProgress(0);
+    });
   </script>
 </body>
 </html>
