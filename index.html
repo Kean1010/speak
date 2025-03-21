@@ -23,7 +23,7 @@
       margin: 5px;
       font-size: 16px;
     }
-    #status, #results {
+    #status, #results, #subtitles {
       margin-top: 20px;
       font-size: 18px;
     }
@@ -43,6 +43,7 @@
   <p id="loading-text">Loading...</p>
   <video id="video" width="640" height="480" autoplay muted></video>
   <canvas id="canvas" width="640" height="480"></canvas>
+  <div id="subtitles">Subtitles: Waiting for speech...</div>
   <br>
   <button id="startBtn" disabled>Start Analysis</button>
   <button id="stopBtn" disabled>Stop Analysis</button>
@@ -57,6 +58,7 @@
     const stopBtn = document.getElementById('stopBtn');
     const statusDiv = document.getElementById('status');
     const resultsDiv = document.getElementById('results');
+    const subtitlesDiv = document.getElementById('subtitles');
     const loadingPie = document.getElementById('loading-pie');
     const loadingText = document.getElementById('loading-text');
 
@@ -145,15 +147,23 @@
 
     function startSpeechRecognition() {
       if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
-        console.warn('Speech recognition not supported');
+        console.warn('Speech recognition not supported in this browser');
         statusDiv.textContent = 'Warning: Speech recognition not supported';
+        subtitlesDiv.textContent = 'Subtitles: Speech recognition unavailable';
         return;
       }
       recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
       recognition.continuous = true;
       recognition.interimResults = true;
+      recognition.lang = 'en-US'; // Ensure English for filler word detection
+      recognition.onstart = () => {
+        console.log('Speech recognition started');
+        subtitlesDiv.textContent = 'Subtitles: Listening...';
+      };
       recognition.onresult = (event) => {
         const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
+        console.log('Speech detected:', transcript);
+        subtitlesDiv.textContent = `Subtitles: ${transcript}`;
         if (transcript.includes('um')) fillerWords.um += 1;
         if (transcript.includes('argh')) fillerWords.argh += 1;
         if (transcript.includes('uh')) fillerWords.uh += 1;
@@ -161,13 +171,17 @@
         if (transcript.includes('you know')) fillerWords['you know'] += 1;
       };
       recognition.onerror = (err) => {
-        console.error('Speech recognition error:', err);
+        console.error('Speech recognition error:', err.error, err.message);
+        subtitlesDiv.textContent = `Subtitles: Error - ${err.error}`;
       };
       recognition.onend = () => {
-        if (intervalId) recognition.start();
+        console.log('Speech recognition ended');
+        if (intervalId) {
+          recognition.start();
+          console.log('Restarting speech recognition');
+        }
       };
       recognition.start();
-      console.log('Speech recognition started');
     }
 
     function resetAnalysis() {
@@ -175,6 +189,7 @@
       notSmilingSeconds = 0;
       fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
       resultsDiv.innerHTML = '';
+      subtitlesDiv.textContent = 'Subtitles: Waiting for speech...';
     }
 
     function stopAnalysis() {
@@ -211,6 +226,7 @@
         startBtn.disabled = false;
         stopBtn.disabled = true;
         statusDiv.textContent = 'Status: Ready to start new analysis';
+        subtitlesDiv.textContent = 'Subtitles: Waiting for speech...';
         console.log('Analysis stopped, ready for new start');
       } catch (err) {
         console.error('Stop error:', err.message);
