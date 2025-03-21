@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smile and Speech Analyzer</title>
-<script src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -51,13 +53,15 @@
     let smilingSeconds = 0;
     let notSmilingSeconds = 0;
     let yawningSeconds = 0;
+    let slouchingSeconds = 0;
     let intervalId = null;
     let recognition = null;
     let fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
+    let net; // PoseNet model
 
     if (typeof faceapi === 'undefined') {
       console.error('Face-API.js not loaded');
-      statusDiv.textContent = 'Error: Face-API.js failed to load from CDN';
+      statusDiv.textContent = 'Error: Face-API.js failed to load';
     } else {
       console.log('Face-API.js loaded successfully');
     }
@@ -67,14 +71,17 @@
         throw new Error('Face-API.js not available');
       }
       try {
-        statusDiv.textContent = 'Loading models...';
+        statusDiv.textContent = 'Loading Face-API models...';
         console.log('Loading Face-API models...');
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
           faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
           faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
         ]);
-        console.log('Models loaded successfully');
+        console.log('Face-API models loaded successfully');
+        statusDiv.textContent = 'Loading PoseNet...';
+        net = await posenet.load();
+        console.log('PoseNet loaded successfully');
         statusDiv.textContent = 'Models loaded';
       } catch (err) {
         console.error('Model loading failed:', err.message);
@@ -100,6 +107,7 @@
 
     async function analyzeExpression() {
       try {
+        // Face-API for smiling and yawning
         const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
           .withFaceLandmarks()
           .withFaceExpressions();
@@ -125,8 +133,22 @@
         } else {
           statusDiv.textContent = 'Status: No face detected';
         }
+
+        // PoseNet for slouching
+        const pose = await net.estimateSinglePose(video);
+        const leftShoulder = pose.keypoints.find(k => k.part === 'leftShoulder');
+        const rightShoulder = pose.keypoints.find(k => k.part === 'rightShoulder');
+        const leftHip = pose.keypoints.find(k => k.part === 'leftHip');
+        if (leftShoulder.score > 0.5 && rightShoulder.score > 0.5 && leftHip.score > 0.5) {
+          const shoulderAngle = Math.abs(leftShoulder.position.y - rightShoulder.position.y);
+          const shoulderToHip = leftShoulder.position.y - leftHip.position.y;
+          if (shoulderAngle < 20 && shoulderToHip > 50) {
+            slouchingSeconds += 1;
+            statusDiv.textContent = 'Status: Slouching Detected';
+          }
+        }
       } catch (err) {
-        console.error('Expression analysis error:', err.message);
+        console.error('Analysis error:', err.message);
         statusDiv.textContent = 'Status: Analysis error';
       }
     }
@@ -159,31 +181,46 @@
     }
 
     function stopAnalysis() {
-      clearInterval(intervalId);
-      intervalId = null;
-      if (recognition) recognition.stop();
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
+      try {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+          console.log('Interval cleared');
+        }
+        if (recognition) {
+          recognition.stop();
+          recognition = null;
+          console.log('Speech recognition stopped');
+        }
+        if (video.srcObject) {
+          video.srcObject.getTracks().forEach(track => track.stop());
+          video.srcObject = null;
+          console.log('Video stream stopped');
+        }
+
+        const totalSeconds = smilingSeconds + notSmilingSeconds;
+        const smilePercentage = totalSeconds > 0 ? (smilingSeconds / totalSeconds) * 100 : 0;
+        const category = smilePercentage > 50 ? 'Good (Mostly Smiling)' : 'Not Good (Mostly Not Smiling)';
+
+        resultsDiv.innerHTML = `
+          <h2>Results</h2>
+          <p>Total Time: ${totalSeconds} seconds</p>
+          <p>Smiling: ${smilingSeconds} seconds (${smilePercentage.toFixed(2)}%)</p>
+          <p>Not Smiling: ${notSmilingSeconds} seconds (${(100 - smilePercentage).toFixed(2)}%)</p>
+          <p>Yawning: ${yawningSeconds} seconds</p>
+          <p>Slouching: ${slouchingSeconds} seconds</p>
+          <p>Category: ${category}</p>
+          <p>Filler Words - Um: ${fillerWords.um}, Argh: ${fillerWords.argh}, Uh: ${fillerWords.uh}, Like: ${fillerWords.like}, You Know: ${fillerWords['you know']}</p>
+        `;
+
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        statusDiv.textContent = 'Status: Analysis stopped';
+        console.log('Analysis fully stopped');
+      } catch (err) {
+        console.error('Stop error:', err.message);
+        statusDiv.textContent = 'Error: Failed to stop analysis';
       }
-
-      const totalSeconds = smilingSeconds + notSmilingSeconds;
-      const smilePercentage = totalSeconds > 0 ? (smilingSeconds / totalSeconds) * 100 : 0;
-      const category = smilePercentage > 50 ? 'Good (Mostly Smiling)' : 'Not Good (Mostly Not Smiling)';
-
-      resultsDiv.innerHTML = `
-        <h2>Results</h2>
-        <p>Total Time: ${totalSeconds} seconds</p>
-        <p>Smiling: ${smilingSeconds} seconds (${smilePercentage.toFixed(2)}%)</p>
-        <p>Not Smiling: ${notSmilingSeconds} seconds (${(100 - smilePercentage).toFixed(2)}%)</p>
-        <p>Yawning: ${yawningSeconds} seconds</p>
-        <p>Category: ${category}</p>
-        <p>Filler Words - Um: ${fillerWords.um}, Argh: ${fillerWords.argh}, Uh: ${fillerWords.uh}, Like: ${fillerWords.like}, You Know: ${fillerWords['you know']}</p>
-      `;
-
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      statusDiv.textContent = 'Status: Analysis stopped';
-      console.log('Analysis stopped');
     }
 
     startBtn.onclick = async () => {
@@ -198,7 +235,7 @@
 
         intervalId = setInterval(analyzeExpression, 1000);
         startBtn.disabled = true;
-        stopBtn.disabled = true;
+        stopBtn.disabled = false; // Ensure stop button is enabled
         statusDiv.textContent = 'Status: Analyzing...';
         console.log('Analysis started');
       } catch (err) {
