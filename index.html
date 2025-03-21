@@ -69,9 +69,8 @@
     let intervalId = null;
     let recognition = null;
     let fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
-    let net; // PoseNet model
+    let net;
 
-    // Loading progress
     let loadingProgress = 0;
     function updateLoadingProgress(percent) {
       loadingProgress = percent;
@@ -88,7 +87,7 @@
       updateLoadingProgress(0);
     } else {
       console.log('Face-API.js loaded successfully');
-      updateLoadingProgress(20); // Initial script load
+      updateLoadingProgress(20);
     }
 
     async function loadModels() {
@@ -104,12 +103,12 @@
           faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
         ]);
         console.log('Face-API models loaded successfully');
-        updateLoadingProgress(60); // Face-API loaded
+        updateLoadingProgress(60);
 
         statusDiv.textContent = 'Loading PoseNet...';
         net = await posenet.load();
         console.log('PoseNet loaded successfully');
-        updateLoadingProgress(100); // All models loaded
+        updateLoadingProgress(100);
         statusDiv.textContent = 'Models loaded';
       } catch (err) {
         console.error('Model loading failed:', err.message);
@@ -135,17 +134,13 @@
 
     async function analyzeExpression() {
       try {
-        // Face-API for smiling and yawning
+        console.log('Starting face analysis...');
         const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
           .withFaceLandmarks()
           .withFaceExpressions();
         if (detections) {
+          console.log('Face detected');
           const smileScore = detections.expressions.happy;
-          const landmarks = detections.landmarks;
-          const mouthTop = landmarks.getMouth()[0];
-          const mouthBottom = landmarks.getMouth()[6];
-          const mouthHeight = mouthBottom.y - mouthTop.y;
-
           if (smileScore > 0.5) {
             smilingSeconds += 1;
             statusDiv.textContent = 'Status: Smiling (Good)';
@@ -154,15 +149,22 @@
             statusDiv.textContent = 'Status: Not Smiling (Not Good)';
           }
 
+          console.log('Checking yawning...');
+          const landmarks = detections.landmarks;
+          const mouthTop = landmarks.getMouth()[0];
+          const mouthBottom = landmarks.getMouth()[6];
+          const mouthHeight = mouthBottom.y - mouthTop.y;
           if (mouthHeight > 40) {
             yawningSeconds += 1;
             statusDiv.textContent = 'Status: Yawning Detected';
+            console.log('Yawning detected, mouth height:', mouthHeight);
           }
         } else {
           statusDiv.textContent = 'Status: No face detected';
+          console.log('No face detected');
         }
 
-        // PoseNet for slouching
+        console.log('Starting pose analysis...');
         const pose = await net.estimateSinglePose(video);
         const leftShoulder = pose.keypoints.find(k => k.part === 'leftShoulder');
         const rightShoulder = pose.keypoints.find(k => k.part === 'rightShoulder');
@@ -173,11 +175,12 @@
           if (shoulderAngle < 20 && shoulderToHip > 50) {
             slouchingSeconds += 1;
             statusDiv.textContent = 'Status: Slouching Detected';
+            console.log('Slouching detected');
           }
         }
       } catch (err) {
-        console.error('Analysis error:', err.message);
-        statusDiv.textContent = 'Status: Analysis error';
+        console.error('Analysis error:', err.message, err.stack);
+        statusDiv.textContent = 'Status: Analysis error - Check console';
       }
     }
 
@@ -266,7 +269,7 @@
         if (typeof faceapi === 'undefined') {
           throw new Error('Face-API.js not loaded');
         }
-        resetAnalysis(); // Clear previous results
+        resetAnalysis();
         await startVideo();
         startSpeechRecognition();
 
@@ -283,7 +286,6 @@
 
     stopBtn.onclick = stopAnalysis;
 
-    // Load models on page load
     console.log('Page loaded at', new Date().toLocaleString());
     loadModels().catch(err => {
       console.error('Initial load error:', err);
