@@ -1,138 +1,192 @@
-<script>
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const context = canvas.getContext('2d');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const statusDiv = document.getElementById('status');
-  const resultsDiv = document.getElementById('results');
-
-  let smilingSeconds = 0;
-  let notSmilingSeconds = 0;
-  let intervalId = null;
-  let recognition = null;
-  let fillerWords = { um: 0, argh: 0 };
-
-  // Load Face-API models with error handling
-  async function loadModels() {
-    try {
-      statusDiv.textContent = 'Loading models...';
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
-        faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
-      ]);
-      console.log('Models loaded successfully');
-      statusDiv.textContent = 'Models loaded';
-    } catch (err) {
-      console.error('Error loading models:', err);
-      statusDiv.textContent = 'Error: Failed to load facial detection models.';
-      throw err;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smile and Speech Analyzer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/3.3.2/face-api.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
     }
-  }
+    #video, #canvas {
+      display: inline-block;
+      max-width: 100%;
+    }
+    #canvas {
+      display: none;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      font-size: 16px;
+    }
+    #status, #results {
+      margin-top: 20px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Smile and Speech Analyzer</h1>
+  <video id="video" width="640" height="480" autoplay muted></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <br>
+  <button id="startBtn">Start Analysis</button>
+  <button id="stopBtn" disabled>Stop Analysis</button>
+  <div id="status">Status: Waiting to start...</div>
+  <div id="results"></div>
 
-  // Start video stream with error handling
-  async function startVideo() {
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('getUserMedia not supported in this browser');
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusDiv = document.getElementById('status');
+    const resultsDiv = document.getElementById('results');
+
+    let smilingSeconds = 0;
+    let notSmilingSeconds = 0;
+    let intervalId = null;
+    let recognition = null;
+    let fillerWords = { um: 0, argh: 0 };
+
+    // Load Face-API models with error handling
+    async function loadModels() {
+      try {
+        statusDiv.textContent = 'Loading models...';
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
+          faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
+        ]);
+        console.log('Models loaded successfully');
+        statusDiv.textContent = 'Models loaded';
+      } catch (err) {
+        console.error('Error loading models:', err);
+        statusDiv.textContent = 'Error: Failed to load facial detection models. Check console.';
+        throw err;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      video.srcObject = stream;
-      console.log('Video stream started');
-    } catch (err) {
-      console.error('Error accessing camera/mic:', err);
-      statusDiv.textContent = 'Error: Could not access camera or microphone. Check permissions.';
-      throw err;
     }
-  }
 
-  // Analyze facial expressions
-  async function analyzeExpression() {
-    try {
-      const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-        .withFaceExpressions();
-      if (detections) {
-        const smileScore = detections.expressions.happy;
-        if (smileScore > 0.5) {
-          smilingSeconds += 1;
-          statusDiv.textContent = 'Status: Smiling (Good)';
-        } else {
-          notSmilingSeconds += 1;
-          statusDiv.textContent = 'Status: Not Smiling (Not Good)';
+    // Start video stream with error handling
+    async function startVideo() {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('getUserMedia not supported in this browser');
         }
-      } else {
-        statusDiv.textContent = 'Status: No face detected';
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        video.srcObject = stream;
+        console.log('Video stream started');
+        statusDiv.textContent = 'Status: Video stream started';
+      } catch (err) {
+        console.error('Error accessing camera/mic:', err);
+        statusDiv.textContent = 'Error: Could not access camera or microphone. Check permissions.';
+        throw err;
       }
-    } catch (err) {
-      console.error('Error analyzing expression:', err);
-      statusDiv.textContent = 'Status: Error during analysis';
     }
-  }
 
-  // Start speech recognition
-  function startSpeechRecognition() {
-    if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
-      statusDiv.textContent = 'Error: Speech recognition not supported in this browser';
-      return;
+    // Analyze facial expressions
+    async function analyzeExpression() {
+      try {
+        const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+          .withFaceExpressions();
+        if (detections) {
+          const smileScore = detections.expressions.happy;
+          if (smileScore > 0.5) {
+            smilingSeconds += 1;
+            statusDiv.textContent = 'Status: Smiling (Good)';
+          } else {
+            notSmilingSeconds += 1;
+            statusDiv.textContent = 'Status: Not Smiling (Not Good)';
+          }
+        } else {
+          statusDiv.textContent = 'Status: No face detected';
+        }
+      } catch (err) {
+        console.error('Error analyzing expression:', err);
+        statusDiv.textContent = 'Status: Error during facial analysis';
+      }
     }
-    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.onresult = (event) => {
-      const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
-      if (transcript.includes('um')) fillerWords.um += 1;
-      if (transcript.includes('argh')) fillerWords.argh += 1;
+
+    // Start speech recognition
+    function startSpeechRecognition() {
+      if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
+        statusDiv.textContent = 'Error: Speech recognition not supported in this browser';
+        console.warn('Speech recognition not supported');
+        return;
+      }
+      recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
+        if (transcript.includes('um')) fillerWords.um += 1;
+        if (transcript.includes('argh')) fillerWords.argh += 1;
+      };
+      recognition.onerror = (err) => {
+        console.error('Speech recognition error:', err);
+        statusDiv.textContent = 'Status: Speech recognition error';
+      };
+      recognition.onend = () => {
+        console.log('Speech recognition ended');
+        if (intervalId) recognition.start(); // Restart if analysis is still running
+      };
+      recognition.start();
+      console.log('Speech recognition started');
+    }
+
+    // Stop and calculate results
+    function stopAnalysis() {
+      clearInterval(intervalId);
+      intervalId = null;
+      if (recognition) recognition.stop();
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+      }
+
+      const totalSeconds = smilingSeconds + notSmilingSeconds;
+      const smilePercentage = totalSeconds > 0 ? (smilingSeconds / totalSeconds) * 100 : 0;
+      const category = smilePercentage > 50 ? 'Good (Mostly Smiling)' : 'Not Good (Mostly Not Smiling)';
+
+      resultsDiv.innerHTML = `
+        <h2>Results</h2>
+        <p>Total Time: ${totalSeconds} seconds</p>
+        <p>Smiling: ${smilingSeconds} seconds (${smilePercentage.toFixed(2)}%)</p>
+        <p>Not Smiling: ${notSmilingSeconds} seconds (${(100 - smilePercentage).toFixed(2)}%)</p>
+        <p>Category: ${category}</p>
+        <p>Filler Words - Um: ${fillerWords.um}, Argh: ${fillerWords.argh}</p>
+      `;
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      statusDiv.textContent = 'Status: Analysis stopped';
+    }
+
+    // Start button click
+    startBtn.onclick = async () => {
+      try {
+        await loadModels();
+        await startVideo();
+        startSpeechRecognition();
+
+        intervalId = setInterval(analyzeExpression, 1000); // Check every second
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        statusDiv.textContent = 'Status: Analyzing...';
+      } catch (err) {
+        console.error('Start error:', err);
+        statusDiv.textContent = 'Error: Failed to start analysis. Check console.';
+      }
     };
-    recognition.onerror = (err) => {
-      console.error('Speech recognition error:', err);
-      statusDiv.textContent = 'Status: Speech recognition error';
-    };
-    recognition.start();
-    console.log('Speech recognition started');
-  }
 
-  // Stop and calculate results
-  function stopAnalysis() {
-    clearInterval(intervalId);
-    if (recognition) recognition.stop();
-    if (video.srcObject) {
-      video.srcObject.getTracks().forEach(track => track.stop());
-    }
+    // Stop button click
+    stopBtn.onclick = stopAnalysis;
 
-    const totalSeconds = smilingSeconds + notSmilingSeconds;
-    const smilePercentage = totalSeconds > 0 ? (smilingSeconds / totalSeconds) * 100 : 0;
-    const category = smilePercentage > 50 ? 'Good (Mostly Smiling)' : 'Not Good (Mostly Not Smiling)';
-
-    resultsDiv.innerHTML = `
-      <h2>Results</h2>
-      <p>Total Time: ${totalSeconds} seconds</p>
-      <p>Smiling: ${smilingSeconds} seconds (${smilePercentage.toFixed(2)}%)</p>
-      <p>Not Smiling: ${notSmilingSeconds} seconds (${(100 - smilePercentage).toFixed(2)}%)</p>
-      <p>Category: ${category}</p>
-      <p>Filler Words - Um: ${fillerWords.um}, Argh: ${fillerWords.argh}</p>
-    `;
-
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    statusDiv.textContent = 'Status: Analysis stopped';
-  }
-
-  // Start button click
-  startBtn.onclick = async () => {
-    try {
-      await loadModels();
-      await startVideo();
-      startSpeechRecognition();
-
-      intervalId = setInterval(analyzeExpression, 1000); // Check every second
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      statusDiv.textContent = 'Status: Analyzing...';
-    } catch (err) {
-      console.error('Start error:', err);
-    }
-  };
-
-  // Stop button click
-  stopBtn.onclick = stopAnalysis;
-</script>
+    // Initial console log for debugging
+    console.log('Page loaded. Click "Start Analysis" to begin.');
+  </script>
+</body>
+</html>
