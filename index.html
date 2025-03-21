@@ -41,7 +41,7 @@
   <h1>Smile and Speech Analyzer</h1>
   <div id="loading-pie"></div>
   <p id="loading-text">Loading...</p>
-  <video id="video" width="640" height="480" autoplay playsinline></video>
+  <video id="video" width="640" height="480" autoplay playsinline muted></video>
   <canvas id="canvas" width="640" height="480"></canvas>
   <div id="subtitles">Subtitles: Waiting for speech...</div>
   <br>
@@ -114,10 +114,10 @@
         statusDiv.textContent = 'Status: Requesting camera/mic...';
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: true, 
-          audio: { echoCancellation: true, noiseSuppression: true } // Enhance audio for mobile
+          audio: { echoCancellation: true, noiseSuppression: true }
         });
         video.srcObject = stream;
-        video.muted = false; // Unmute for SpeechRecognition on mobile
+        video.muted = true; // Ensure muted to prevent echo
         console.log('Video and audio stream started');
         statusDiv.textContent = 'Status: Stream started';
       } catch (err) {
@@ -180,14 +180,12 @@
         const transcript = result[0].transcript.toLowerCase();
         console.log('Speech result:', transcript, 'Confidence:', result[0].confidence);
         subtitlesDiv.textContent = `Subtitles: ${transcript}`;
+        subtitlesDiv.scrollTop = subtitlesDiv.scrollHeight; // Force UI refresh
         if (transcript.includes('um')) fillerWords.um += 1;
         if (transcript.includes('argh')) fillerWords.argh += 1;
         if (transcript.includes('uh')) fillerWords.uh += 1;
         if (transcript.includes('like')) fillerWords.like += 1;
         if (transcript.includes('you know')) fillerWords['you know'] += 1;
-      };
-      recognition.onspeechend = () => {
-        console.log('Speech ended');
       };
       recognition.onend = () => {
         console.log('Speech recognition ended at', new Date().toLocaleTimeString());
