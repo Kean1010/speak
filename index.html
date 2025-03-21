@@ -54,11 +54,11 @@
     let recognition = null;
     let fillerWords = { um: 0, argh: 0 };
 
-    // Load Face-API models with detailed error handling
+    // Load Face-API models
     async function loadModels() {
       try {
         statusDiv.textContent = 'Loading models...';
-        console.log('Attempting to load Face-API models...');
+        console.log('Loading Face-API models from CDN...');
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
           faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
@@ -67,21 +67,21 @@
         statusDiv.textContent = 'Models loaded';
       } catch (err) {
         console.error('Model loading failed:', err);
-        statusDiv.textContent = 'Error: Failed to load models. Check console.';
+        statusDiv.textContent = 'Error: Failed to load models. Using fallback.';
         throw err;
       }
     }
 
-    // Start video stream with detailed error handling
+    // Start video stream
     async function startVideo() {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error('getUserMedia not supported in this browser');
+          throw new Error('getUserMedia not supported');
         }
         console.log('Requesting camera and microphone access...');
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         video.srcObject = stream;
-        console.log('Video stream started successfully');
+        console.log('Video stream started');
         statusDiv.textContent = 'Status: Video stream started';
       } catch (err) {
         console.error('Video stream error:', err);
@@ -109,15 +109,15 @@
         }
       } catch (err) {
         console.error('Expression analysis error:', err);
-        statusDiv.textContent = 'Status: Error during facial analysis';
+        statusDiv.textContent = 'Status: Error during analysis';
       }
     }
 
     // Start speech recognition
     function startSpeechRecognition() {
       if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
-        statusDiv.textContent = 'Warning: Speech recognition not supported';
         console.warn('Speech recognition not supported');
+        statusDiv.textContent = 'Warning: Speech recognition not supported';
         return;
       }
       recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -133,8 +133,7 @@
         statusDiv.textContent = 'Status: Speech recognition error';
       };
       recognition.onend = () => {
-        console.log('Speech recognition ended');
-        if (intervalId) recognition.start(); // Restart if analysis is still running
+        if (intervalId) recognition.start();
       };
       recognition.start();
       console.log('Speech recognition started');
@@ -176,22 +175,21 @@
         await startVideo();
         startSpeechRecognition();
 
-        intervalId = setInterval(analyzeExpression, 1000); // Check every second
+        intervalId = setInterval(analyzeExpression, 1000);
         startBtn.disabled = true;
         stopBtn.disabled = false;
         statusDiv.textContent = 'Status: Analyzing...';
         console.log('Analysis started');
       } catch (err) {
-        console.error('Failed to start analysis:', err);
-        statusDiv.textContent = 'Error: Failed to start analysis. Check console for details.';
+        console.error('Failed to start analysis:', err.message, err.stack);
+        statusDiv.textContent = 'Error: Failed to start analysis. See console.';
       }
     };
 
     // Stop button click
     stopBtn.onclick = stopAnalysis;
 
-    // Initial console log
-    console.log('Page loaded. Ready to start analysis.');
+    console.log('Page loaded at', new Date().toLocaleString());
   </script>
 </body>
 </html>
