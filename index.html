@@ -54,8 +54,19 @@
     let recognition = null;
     let fillerWords = { um: 0, argh: 0 };
 
+    // Check if faceapi is loaded
+    if (typeof faceapi === 'undefined') {
+      console.error('Face-API.js not loaded');
+      statusDiv.textContent = 'Error: Face-API.js failed to load from CDN';
+    } else {
+      console.log('Face-API.js loaded successfully');
+    }
+
     // Load Face-API models
     async function loadModels() {
+      if (typeof faceapi === 'undefined') {
+        throw new Error('Face-API.js not available');
+      }
       try {
         statusDiv.textContent = 'Loading models...';
         console.log('Loading Face-API models...');
@@ -168,6 +179,9 @@
     startBtn.onclick = async () => {
       console.log('Start button clicked');
       try {
+        if (typeof faceapi === 'undefined') {
+          throw new Error('Face-API.js not loaded');
+        }
         await loadModels();
         await startVideo();
         startSpeechRecognition();
