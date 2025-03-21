@@ -54,10 +54,11 @@
     let recognition = null;
     let fillerWords = { um: 0, argh: 0 };
 
-    // Load Face-API models with error handling
+    // Load Face-API models with detailed error handling
     async function loadModels() {
       try {
         statusDiv.textContent = 'Loading models...';
+        console.log('Attempting to load Face-API models...');
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
           faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
@@ -65,25 +66,26 @@
         console.log('Models loaded successfully');
         statusDiv.textContent = 'Models loaded';
       } catch (err) {
-        console.error('Error loading models:', err);
-        statusDiv.textContent = 'Error: Failed to load facial detection models. Check console.';
+        console.error('Model loading failed:', err);
+        statusDiv.textContent = 'Error: Failed to load models. Check console.';
         throw err;
       }
     }
 
-    // Start video stream with error handling
+    // Start video stream with detailed error handling
     async function startVideo() {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           throw new Error('getUserMedia not supported in this browser');
         }
+        console.log('Requesting camera and microphone access...');
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         video.srcObject = stream;
-        console.log('Video stream started');
+        console.log('Video stream started successfully');
         statusDiv.textContent = 'Status: Video stream started';
       } catch (err) {
-        console.error('Error accessing camera/mic:', err);
-        statusDiv.textContent = 'Error: Could not access camera or microphone. Check permissions.';
+        console.error('Video stream error:', err);
+        statusDiv.textContent = 'Error: Could not access camera/mic. Check permissions.';
         throw err;
       }
     }
@@ -106,7 +108,7 @@
           statusDiv.textContent = 'Status: No face detected';
         }
       } catch (err) {
-        console.error('Error analyzing expression:', err);
+        console.error('Expression analysis error:', err);
         statusDiv.textContent = 'Status: Error during facial analysis';
       }
     }
@@ -114,7 +116,7 @@
     // Start speech recognition
     function startSpeechRecognition() {
       if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
-        statusDiv.textContent = 'Error: Speech recognition not supported in this browser';
+        statusDiv.textContent = 'Warning: Speech recognition not supported';
         console.warn('Speech recognition not supported');
         return;
       }
@@ -163,10 +165,12 @@
       startBtn.disabled = false;
       stopBtn.disabled = true;
       statusDiv.textContent = 'Status: Analysis stopped';
+      console.log('Analysis stopped');
     }
 
     // Start button click
     startBtn.onclick = async () => {
+      console.log('Start button clicked');
       try {
         await loadModels();
         await startVideo();
@@ -176,17 +180,18 @@
         startBtn.disabled = true;
         stopBtn.disabled = false;
         statusDiv.textContent = 'Status: Analyzing...';
+        console.log('Analysis started');
       } catch (err) {
-        console.error('Start error:', err);
-        statusDiv.textContent = 'Error: Failed to start analysis. Check console.';
+        console.error('Failed to start analysis:', err);
+        statusDiv.textContent = 'Error: Failed to start analysis. Check console for details.';
       }
     };
 
     // Stop button click
     stopBtn.onclick = stopAnalysis;
 
-    // Initial console log for debugging
-    console.log('Page loaded. Click "Start Analysis" to begin.');
+    // Initial console log
+    console.log('Page loaded. Ready to start analysis.');
   </script>
 </body>
 </html>
