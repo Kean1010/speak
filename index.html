@@ -22,9 +22,17 @@
             flex: 1;
             border: 1px solid #ccc;
             padding: 10px;
-            height: 50vh;
+            height: 30vh; /* Reduced height for fixed area */
             overflow-y: auto;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Aligns messages to bottom */
+        }
+        .chat-content {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
         }
         .video-container {
             width: 100%;
@@ -36,7 +44,7 @@
             height: auto;
         }
         .message {
-            margin: 5px 0;
+            margin: 0;
             padding: 5px;
             border-radius: 3px;
             word-wrap: break-word;
@@ -78,7 +86,7 @@
             }
             .chat-container {
                 width: 50%;
-                height: 400px;
+                height: 400px; /* Larger fixed height on desktop */
             }
             .video-container {
                 width: 50%;
@@ -88,7 +96,9 @@
 </head>
 <body>
     <div class="container">
-        <div class="chat-container" id="chatContainer"></div>
+        <div class="chat-container" id="chatContainer">
+            <div class="chat-content" id="chatContent"></div>
+        </div>
         <div class="video-container">
             <video id="video" autoplay playsinline></video>
             <canvas id="canvas" style="display:none"></canvas>
@@ -210,7 +220,7 @@
                 }
 
                 const displayText = fullTranscript + interimTranscript;
-                const container = document.getElementById("chatContainer");
+                const container = document.getElementById("chatContent");
                 const existingUserMessage = container.querySelector(".user-message:last-child");
                 if (existingUserMessage && !fullTranscript) {
                     existingUserMessage.textContent = displayText;
@@ -221,13 +231,13 @@
 
             recognition.onend = () => {
                 console.log("Speech recognition ended, restarting...");
-                recognition.start(); // Restart if it stops
+                recognition.start();
             };
 
             recognition.onerror = (event) => {
                 addMessage("Speech recognition error: " + event.error, "bot");
                 if (event.error !== "aborted") {
-                    setTimeout(() => recognition.start(), 1000); // Restart after error
+                    setTimeout(() => recognition.start(), 1000);
                 }
             };
         }
@@ -245,12 +255,13 @@
 
         // Chat functions
         function addMessage(text, type) {
-            const container = document.getElementById("chatContainer");
+            const container = document.getElementById("chatContent");
             const messageDiv = document.createElement("div");
             messageDiv.classList.add("message", type === "bot" ? "bot-message" : "user-message");
             messageDiv.textContent = text;
             container.appendChild(messageDiv);
-            container.scrollTop = container.scrollHeight;
+            const chatContainer = document.getElementById("chatContainer");
+            chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
         function askQuestion() {
