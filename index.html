@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smile and Speech Analyzer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/3.3.2/face-api.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; }
+    #video, #canvas { display: inline-block; }
+    #results { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Smile and Speech Analyzer</h1>
+  <video id="video" width="640" height="480" autoplay muted></video>
+  <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+  <br>
+  <button id="startBtn">Start Analysis</button>
+  <button id="stopBtn" disabled>Stop Analysis</button>
+  <div id="status">Status: Waiting to start...</div>
+  <div id="results"></div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusDiv = document.getElementById('status');
+    const resultsDiv = document.getElementById('results');
+
+    let smilingSeconds = 0;
+    let notSmilingSeconds = 0;
+    let intervalId = null;
+    let recognition = null;
+    let fillerWords = { um: 0, argh: 0 };
+
+    // Load Face-API models
+    async function loadModels() {
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
+        faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
+      ]);
+      console.log('Models loaded');
+    }
+
+    // Start video stream
+    async function startVideo() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        video.srcObject = stream;
+      } catch (err) {
+        console.error('Error accessing camera: ', err);
+        statusDiv.textContent = 'Error: Could not access camera.';
+      }
+    }
+
+    // Analyze facial expressions
+    async function analyzeExpression() {
+      const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceExpressions();
+      if (detections) {
+        const smileScore = detections.expressions.happy;
+        if (smileScore > 0.5) {
+          smilingSeconds += 1;
+          statusDiv.textContent = 'Status: Smiling (Good)';
+        } else {
+          notSmilingSeconds += 1;
+          statusDiv.textContent = 'Status: Not Smiling (Not Good)';
+        }
+      } else {
+        statusDiv.textContent = 'Status: No face detected';
+      }
+    }
+
+    // Start speech recognition
+    function startSpeechRecognition() {
+      recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
+        if (transcript.includes('um')) fillerWords.um += 1;
+        if (transcript.includes('argh')) fillerWords.argh += 1;
+      };
+      recognition.onerror = (err) => console.error('Speech recognition error:', err);
+      recognition.start();
+    }
+
+    // Stop and calculate results
+    function stopAnalysis() {
+      clearInterval(intervalId);
+      recognition.stop();
+      video.srcObject.getTracks().forEach(track => track.stop());
+
+      const totalSeconds = smilingSeconds + notSmilingSeconds;
+      const smilePercentage = totalSeconds > 0 ? (smilingSeconds / totalSeconds) * 100 : 0;
+      const category = smilePercentage > 50 ? 'Good (Mostly Smiling)' : 'Not Good (Mostly Not Smiling)';
+
+      resultsDiv.innerHTML = `
+        <h2>Results</h2>
+        <p>Total Time: ${totalSeconds} seconds</p>
+        <p>Smiling: ${smilingSeconds} seconds (${smilePercentage.toFixed(2)}%)</p>
+        <p>Not Smiling: ${notSmilingSeconds} seconds (${(100 - smilePercentage).toFixed(2)}%)</p>
+        <p>Category: ${category}</p>
+        <p>Filler Words - Um: ${fillerWords.um}, Argh: ${fillerWords.argh}</p>
+      `;
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      statusDiv.textContent = 'Status: Analysis stopped';
+    }
+
+    // Start button click
+    startBtn.onclick = async () => {
+      await loadModels();
+      await startVideo();
+      startSpeechRecognition();
+
+      intervalId = setInterval(analyzeExpression, 1000); // Check every second
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      statusDiv.textContent = 'Status: Analyzing...';
+    };
+
+    // Stop button click
+    stopBtn.onclick = stopAnalysis;
+  </script>
+</body>
+</html>
