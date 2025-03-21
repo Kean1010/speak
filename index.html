@@ -41,7 +41,7 @@
   <h1>Smile and Speech Analyzer</h1>
   <div id="loading-pie"></div>
   <p id="loading-text">Loading...</p>
-  <video id="video" width="640" height="480" autoplay muted></video>
+  <video id="video" width="640" height="480" autoplay playsinline></video>
   <canvas id="canvas" width="640" height="480"></canvas>
   <div id="subtitles">Subtitles: Waiting for speech...</div>
   <br>
@@ -112,8 +112,12 @@
       try {
         console.log('Requesting camera and microphone access...');
         statusDiv.textContent = 'Status: Requesting camera/mic...';
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: true, 
+          audio: { echoCancellation: true, noiseSuppression: true } // Enhance audio for mobile
+        });
         video.srcObject = stream;
+        video.muted = false; // Unmute for SpeechRecognition on mobile
         console.log('Video and audio stream started');
         statusDiv.textContent = 'Status: Stream started';
       } catch (err) {
@@ -185,17 +189,16 @@
       recognition.onspeechend = () => {
         console.log('Speech ended');
       };
-      recognition.onsoundend = () => {
-        console.log('Sound ended');
-      };
-      recognition.onaudioend = () => {
-        console.log('Audio capture ended');
-      };
       recognition.onend = () => {
         console.log('Speech recognition ended at', new Date().toLocaleTimeString());
         if (intervalId) {
           console.log('Restarting speech recognition...');
-          recognition.start();
+          try {
+            recognition.start();
+          } catch (err) {
+            console.error('Restart error:', err.message);
+            subtitlesDiv.textContent = `Subtitles: Restart failed - ${err.message}`;
+          }
         }
       };
       recognition.onerror = (err) => {
