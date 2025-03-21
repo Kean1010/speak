@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smile and Speech Analyzer</title>
   <script src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -64,12 +62,9 @@
 
     let smilingSeconds = 0;
     let notSmilingSeconds = 0;
-    let yawningSeconds = 0;
-    let slouchingSeconds = 0;
     let intervalId = null;
     let recognition = null;
     let fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
-    let net;
 
     let loadingProgress = 0;
     function updateLoadingProgress(percent) {
@@ -99,15 +94,9 @@
         console.log('Loading Face-API models...');
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
-          faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
-          faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
+          faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
         ]);
         console.log('Face-API models loaded successfully');
-        updateLoadingProgress(60);
-
-        statusDiv.textContent = 'Loading PoseNet...';
-        net = await posenet.load();
-        console.log('PoseNet loaded successfully');
         updateLoadingProgress(100);
         statusDiv.textContent = 'Models loaded';
       } catch (err) {
@@ -134,12 +123,9 @@
 
     async function analyzeExpression() {
       try {
-        console.log('Starting face analysis...');
         const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-          .withFaceLandmarks()
           .withFaceExpressions();
         if (detections) {
-          console.log('Face detected');
           const smileScore = detections.expressions.happy;
           if (smileScore > 0.5) {
             smilingSeconds += 1;
@@ -148,38 +134,11 @@
             notSmilingSeconds += 1;
             statusDiv.textContent = 'Status: Not Smiling (Not Good)';
           }
-
-          console.log('Checking yawning...');
-          const landmarks = detections.landmarks;
-          const mouthTop = landmarks.getMouth()[0];
-          const mouthBottom = landmarks.getMouth()[6];
-          const mouthHeight = mouthBottom.y - mouthTop.y;
-          if (mouthHeight > 40) {
-            yawningSeconds += 1;
-            statusDiv.textContent = 'Status: Yawning Detected';
-            console.log('Yawning detected, mouth height:', mouthHeight);
-          }
         } else {
           statusDiv.textContent = 'Status: No face detected';
-          console.log('No face detected');
-        }
-
-        console.log('Starting pose analysis...');
-        const pose = await net.estimateSinglePose(video);
-        const leftShoulder = pose.keypoints.find(k => k.part === 'leftShoulder');
-        const rightShoulder = pose.keypoints.find(k => k.part === 'rightShoulder');
-        const leftHip = pose.keypoints.find(k => k.part === 'leftHip');
-        if (leftShoulder.score > 0.5 && rightShoulder.score > 0.5 && leftHip.score > 0.5) {
-          const shoulderAngle = Math.abs(leftShoulder.position.y - rightShoulder.position.y);
-          const shoulderToHip = leftShoulder.position.y - leftHip.position.y;
-          if (shoulderAngle < 20 && shoulderToHip > 50) {
-            slouchingSeconds += 1;
-            statusDiv.textContent = 'Status: Slouching Detected';
-            console.log('Slouching detected');
-          }
         }
       } catch (err) {
-        console.error('Analysis error:', err.message, err.stack);
+        console.error('Analysis error:', err.message);
         statusDiv.textContent = 'Status: Analysis error - Check console';
       }
     }
@@ -214,8 +173,6 @@
     function resetAnalysis() {
       smilingSeconds = 0;
       notSmilingSeconds = 0;
-      yawningSeconds = 0;
-      slouchingSeconds = 0;
       fillerWords = { um: 0, argh: 0, uh: 0, like: 0, 'you know': 0 };
       resultsDiv.innerHTML = '';
     }
@@ -247,8 +204,6 @@
           <p>Total Time: ${totalSeconds} seconds</p>
           <p>Smiling: ${smilingSeconds} seconds (${smilePercentage.toFixed(2)}%)</p>
           <p>Not Smiling: ${notSmilingSeconds} seconds (${(100 - smilePercentage).toFixed(2)}%)</p>
-          <p>Yawning: ${yawningSeconds} seconds</p>
-          <p>Slouching: ${slouchingSeconds} seconds</p>
           <p>Category: ${category}</p>
           <p>Filler Words - Um: ${fillerWords.um}, Argh: ${fillerWords.argh}, Uh: ${fillerWords.uh}, Like: ${fillerWords.like}, You Know: ${fillerWords['you know']}</p>
         `;
